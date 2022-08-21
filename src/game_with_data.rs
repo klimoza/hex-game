@@ -49,7 +49,7 @@ impl GameWithData {
                 self.process_cell(cell.symm());
             }
             _ => env::panic_str("Incorrect move args"),
-        }
+        };
     }
 
     fn process_cell(&mut self, cell: Cell) {
@@ -96,7 +96,7 @@ impl GameWithData {
             }
             for c in good_neighbours.into_iter() {
                 self.data.set_cell(&c, border);
-                q.push_back(Cell { x: c.x, y: c.y });
+                q.push_back(Cell::new(c.x, c.y));
             }
         }
     }
@@ -121,7 +121,10 @@ mod game_with_board_tests {
 
     impl Debug for Board {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("Board").field("size", &self.size).field("field", &self.field).finish()
+            f.debug_struct("Board")
+                .field("size", &self.size)
+                .field("field", &self.field)
+                .finish()
         }
     }
 

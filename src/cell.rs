@@ -22,22 +22,22 @@ impl Cell {
         let mut neighbours: Vec<Cell> = Vec::new();
         let (x, y) = (self.x, self.y);
         if self.x > 0 {
-            neighbours.push(Cell { x: x - 1, y });
+            neighbours.push(Cell::new(x - 1, y));
         }
         if self.y > 0 {
-            neighbours.push(Cell { x, y: y - 1 });
+            neighbours.push(Cell::new(x, y - 1));
         }
         if self.x + 1 < field_size && self.y > 0 {
-            neighbours.push(Cell { x: x + 1, y: y - 1 });
+            neighbours.push(Cell::new(x + 1, y - 1));
         }
         if self.x + 1 < field_size {
-            neighbours.push(Cell { x: x + 1, y });
+            neighbours.push(Cell::new(x + 1, y));
         }
         if self.y + 1 < field_size {
-            neighbours.push(Cell { x, y: y + 1 });
+            neighbours.push(Cell::new(x, y + 1));
         }
         if self.x > 0 && self.y + 1 < field_size {
-            neighbours.push(Cell { x: x - 1, y: y + 1 });
+            neighbours.push(Cell::new(x - 1, y + 1));
         }
         return neighbours;
     }

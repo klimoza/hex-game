@@ -14,6 +14,7 @@ pub struct Game {
     pub board: Board,
     pub current_block_height: BlockHeight,
     pub prev_block_height: BlockHeight,
+    pub is_started: bool,
     pub is_finished: bool,
 }
 
@@ -21,13 +22,14 @@ pub type GameIndex = u64;
 
 impl Game {
     pub fn new(first_player: AccountId, second_player: AccountId, field_size: usize) -> Self {
-        Game {
+        Self {
             first_player,
             second_player,
             turn: 0,
             board: Board::new(field_size),
             current_block_height: env::block_height(),
             prev_block_height: 0,
+            is_started: false,
             is_finished: false,
         }
     }
