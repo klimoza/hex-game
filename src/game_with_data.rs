@@ -4,9 +4,7 @@ use std::collections::VecDeque;
 
 use crate::board::Board;
 use crate::cell::Cell;
-use crate::external::ext_roketo;
 use crate::game::Game;
-use crate::roketo::roketo_get_account;
 use crate::*;
 
 #[derive(BorshDeserialize, BorshSerialize)]

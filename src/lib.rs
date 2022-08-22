@@ -4,7 +4,6 @@ use game::{Game, GameIndex};
 use game_with_data::GameWithData;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
-use near_sdk::json_types::Base58CryptoHash;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     env, near_bindgen, require, AccountId, BorshStorageKey, PanicOnDefault, Promise,
@@ -87,13 +86,42 @@ impl Contract {
         game
     }
 
-    pub fn make_move(&mut self, index: GameIndex, move_type: MoveType, cell: Option<Cell>) -> Game {
-        let mut game_with_data = self.games.get(&index).expect("Game doesn't exist.");
+    pub fn get_game_internal(&self, index: GameIndex) -> Game {
+        let game = self.games.get(&index).map(|x| x.game);
+        game.unwrap()
+    }
+
+    pub fn make_move(
+        &mut self,
+        index: GameIndex,
+        move_type: MoveType,
+        cell: Option<Cell>,
+    ) -> Promise {
+        let game_with_data = self.games.get(&index).expect("Game doesn't exist.");
         require!(
             !game_with_data.game.is_finished,
             "Game is already finished!"
         );
         // TODO: проверить что все ставки уже сделаны
+        if let Some(promise) = self.check_stream_bids(index) {
+            promise.then(
+                Self::ext(env::current_account_id()).make_move_internal(index, move_type, cell),
+            )
+        } else {
+            Self::ext(env::current_account_id()).make_move_internal(index, move_type, cell)
+        }
+    }
+
+    pub fn make_move_internal(
+        &mut self,
+        index: GameIndex,
+        move_type: MoveType,
+        cell: Option<Cell>,
+    ) -> PromiseOrValue<Game> {
+        let mut game_with_data = self.games.get(&index).expect("Game doesn't exist.");
+        if game_with_data.game.is_finished {
+            return PromiseOrValue::Value(game_with_data.game);
+        }
         let old_board = game_with_data.game.board.clone();
 
         game_with_data.make_move(move_type, cell, self.bids.get(&index));
@@ -110,10 +138,23 @@ impl Contract {
             } else {
                 env::log_str("Second player wins!");
             }
+            self.games.insert(&index, &game_with_data);
+            if self.bids.contains_key(&index) {
+                return PromiseOrValue::Promise(
+                    self.player_won(
+                        &self.bids.get(&index).unwrap(),
+                        &game_with_data.game,
+                        game_with_data.game.turn as u8 % 2,
+                    )
+                    .then(Self::ext(env::current_account_id()).get_game_internal(index)),
+                );
+            } else {
+                return PromiseOrValue::Value(game_with_data.game);
+            }
+        } else {
+            self.games.insert(&index, &game_with_data);
+            return PromiseOrValue::Value(game_with_data.game);
         }
-
-        self.games.insert(&index, &game_with_data);
-        return self.games.get(&index).unwrap().game;
     }
 
     pub fn parse_two_promise_streams(&mut self, game_id: GameIndex) -> Promise {
@@ -162,7 +203,13 @@ impl Contract {
     }
 
     pub fn parse_two_streams(&mut self, game_id: GameIndex, stream1: Stream, stream2: Stream) {
-        unimplemented!();
+        //TODO: доделать
+        require!(env::predecessor_account_id() == env::current_account_id());
+        match (stream1.status, stream2.status) {
+            (StreamStatus::Active, _) => unreachable!(),
+            (_, StreamStatus::Active) => unreachable!(),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -261,13 +308,13 @@ mod contract_tests {
 
         let game = contract.make_move(id, MoveType::PLACE, Some(Cell::new(4, 0)));
         test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 0)), None);
-        assert_eq!(test_game.game, game);
+        // assert_eq!(test_game.game, game);
         assert_eq!(test_game, contract.games.get(&id).unwrap());
 
         testing_env!(get_context(accounts(1)));
         let game = contract.make_move(id, MoveType::SWAP, Some(Cell::new(4, 0)));
         test_game.make_move(MoveType::SWAP, Some(Cell::new(4, 0)), None);
-        assert_eq!(test_game.game, game);
+        // assert_eq!(test_game.game, game);
         assert_eq!(test_game, contract.games.get(&id).unwrap());
     }
 }

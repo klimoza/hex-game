@@ -5,7 +5,7 @@ use near_sdk::{
 };
 
 use crate::{
-    external::{ext_roketo, AccountView},
+    external::AccountView,
     roketo::{get_two_streams, roketo_create_stream, roketo_get_account},
     utils::GAME_PLAYTIME,
     *,
@@ -35,6 +35,14 @@ impl Bid {
 
 #[near_bindgen]
 impl Contract {
+    pub(crate) fn player_won(&self, bid: &Bid, game: &Game, player: u8) -> Promise {
+        if player == 1 {
+            Promise::new(game.first_player.clone()).transfer(bid.bid)
+        } else {
+            Promise::new(game.second_player.clone()).transfer(bid.bid)
+        }
+    }
+
     #[payable]
     pub fn make_bid(&mut self, game_id: GameIndex) -> Promise {
         let opt_bid = self.bids.get(&game_id);
