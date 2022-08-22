@@ -1,9 +1,14 @@
 use near_sdk::{
     borsh::{BorshDeserialize, BorshSerialize},
-    CryptoHash, Promise,
+    json_types::Base58CryptoHash,
+    Promise,
 };
 
-use crate::{stream::create_testnet_stream, utils::GAME_PLAYTIME, *};
+use crate::{
+    stream::{create_stream, get_roketo_account},
+    utils::GAME_PLAYTIME,
+    *,
+};
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -11,8 +16,8 @@ pub struct Bid {
     pub bid: u128,
     pub did_first_player_bet: bool,
     pub did_second_player_bet: bool,
-    pub stream_from_first_player: CryptoHash,
-    pub stream_from_second_player: CryptoHash,
+    pub stream_from_first_player: Base58CryptoHash,
+    pub stream_from_second_player: Base58CryptoHash,
 }
 
 impl Bid {
@@ -21,8 +26,8 @@ impl Bid {
             bid,
             did_first_player_bet: false,
             did_second_player_bet: false,
-            stream_from_first_player: CryptoHash::default(),
-            stream_from_second_player: CryptoHash::default(),
+            stream_from_first_player: Base58CryptoHash::default(),
+            stream_from_second_player: Base58CryptoHash::default(),
         }
     }
 }
@@ -42,10 +47,12 @@ impl Contract {
         let account_id = env::predecessor_account_id();
 
         if account_id == game.first_player && !bid.did_first_player_bet {
-            create_testnet_stream(bid.bid, GAME_PLAYTIME, game.first_player)
+            create_stream(bid.bid, GAME_PLAYTIME, game.first_player)
+                .then(get_roketo_account(account_id))
                 .then(Self::ext(env::current_account_id()).resolve_first_player(bid, game_id))
         } else if account_id == game.second_player && !bid.did_second_player_bet {
-            create_testnet_stream(bid.bid, GAME_PLAYTIME, game.second_player)
+            create_stream(bid.bid, GAME_PLAYTIME, game.second_player)
+                .then(get_roketo_account(account_id))
                 .then(Self::ext(env::predecessor_account_id()).resolve_second_player(bid, game_id))
         } else {
             require!(false, "Incorrect bet");

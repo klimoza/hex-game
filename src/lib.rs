@@ -112,6 +112,7 @@ impl Contract {
 pub mod bid;
 pub mod board;
 pub mod cell;
+pub mod external;
 pub mod game;
 pub mod game_with_data;
 pub mod stream;
