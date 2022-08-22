@@ -4,7 +4,9 @@ use std::collections::VecDeque;
 
 use crate::board::Board;
 use crate::cell::Cell;
+use crate::external::ext_roketo;
 use crate::game::Game;
+use crate::roketo::roketo_get_account;
 use crate::*;
 
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -21,7 +23,7 @@ impl GameWithData {
         }
     }
 
-    pub fn make_move(&mut self, move_type: MoveType, cell: Option<Cell>) {
+    pub fn make_move(&mut self, move_type: MoveType, cell: Option<Cell>, bid: Option<Bid>) {
         match (move_type, cell) {
             (MoveType::PLACE, Some(cell)) => {
                 if self.game.turn % 2 == 0 {
@@ -212,36 +214,36 @@ mod game_with_board_tests {
         assert_eq!(test_game.data, test_data);
 
         testing_env!(get_context(accounts(0)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(3, 0)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(3, 0)), None);
         test_data.set_cell(&Cell::new(3, 0), 1);
         assert_eq!(test_game.data, test_data);
 
         testing_env!(get_context(accounts(1)));
-        test_game.make_move(MoveType::SWAP, None);
+        test_game.make_move(MoveType::SWAP, None, None);
         test_data.set_cell(&Cell::new(3, 0), 0);
         test_data.set_cell(&Cell::new(0, 3), 1);
         assert_eq!(test_game.data, test_data);
 
         testing_env!(get_context(accounts(0)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 4)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 4)), None);
         test_data.set_cell(&Cell::new(4, 4), 2);
         assert_eq!(test_game.data, test_data);
 
         testing_env!(get_context(accounts(1)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(1, 2)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(1, 2)), None);
         test_data.set_cell(&Cell::new(1, 2), 1);
         assert_eq!(test_game.data, test_data);
 
         testing_env!(get_context(accounts(0)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 2)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 2)), None);
         assert_eq!(test_game.data, test_data);
 
         testing_env!(get_context(accounts(1)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(3, 2)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(3, 2)), None);
         assert_eq!(test_game.data, test_data);
 
         testing_env!(get_context(accounts(0)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 3)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 3)), None);
         test_data.set_cell(&Cell::new(4, 2), 2);
         test_data.set_cell(&Cell::new(4, 3), 2);
         assert_eq!(test_game.data, test_data);
@@ -251,7 +253,7 @@ mod game_with_board_tests {
     #[should_panic]
     fn test_make_move_incorrect_args() {
         let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
-        test_game.make_move(MoveType::PLACE, None);
+        test_game.make_move(MoveType::PLACE, None, None);
     }
 
     #[test]
@@ -259,6 +261,6 @@ mod game_with_board_tests {
     fn test_make_move_wrong_player() {
         let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
         testing_env!(get_context(accounts(1)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(0, 0)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(0, 0)), None);
     }
 }

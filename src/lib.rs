@@ -4,9 +4,16 @@ use game::{Game, GameIndex};
 use game_with_data::GameWithData;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
+use near_sdk::json_types::Base58CryptoHash;
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, near_bindgen, require, AccountId, BorshStorageKey, PanicOnDefault};
+use near_sdk::{
+    env, near_bindgen, require, AccountId, BorshStorageKey, PanicOnDefault, Promise,
+    PromiseOrValue, PromiseResult,
+};
 use utils::BID;
+
+use crate::external::{Stream, StreamStatus};
+use crate::roketo::pause_stream;
 
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
@@ -88,7 +95,8 @@ impl Contract {
         );
         // TODO: проверить что все ставки уже сделаны
         let old_board = game_with_data.game.board.clone();
-        game_with_data.make_move(move_type, cell);
+
+        game_with_data.make_move(move_type, cell, self.bids.get(&index));
 
         env::log_str("Old board:");
         old_board.debug_logs();
@@ -107,6 +115,55 @@ impl Contract {
         self.games.insert(&index, &game_with_data);
         return self.games.get(&index).unwrap().game;
     }
+
+    pub fn parse_two_promise_streams(&mut self, game_id: GameIndex) -> Promise {
+        require!(env::predecessor_account_id() == env::current_account_id());
+        require!(env::promise_results_count() == 2, "ERR_TOO_MANY_RESULTS");
+        let stream1 = match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(val) => {
+                if let Ok(stream) = near_sdk::serde_json::from_slice::<Stream>(&val) {
+                    stream
+                } else {
+                    env::panic_str("ERR_WRONG_VAL_RECEIVED")
+                }
+            }
+            PromiseResult::Failed => env::panic_str("ERR_CALL_FAILED"),
+        };
+        let stream2 = match env::promise_result(1) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(val) => {
+                if let Ok(stream) = near_sdk::serde_json::from_slice::<Stream>(&val) {
+                    stream
+                } else {
+                    env::panic_str("ERR_WRONG_VAL_RECEIVED")
+                }
+            }
+            PromiseResult::Failed => env::panic_str("ERR_CALL_FAILED"),
+        };
+        if stream1.status == StreamStatus::Active && stream2.status == StreamStatus::Active {
+            pause_stream(stream1.id.into())
+                .and(pause_stream(stream2.id.into()))
+                .then(
+                    Self::ext(env::current_account_id())
+                        .parse_two_streams(game_id, stream1, stream2),
+                )
+        } else if stream1.status == StreamStatus::Active {
+            pause_stream(stream1.id.into()).then(
+                Self::ext(env::current_account_id()).parse_two_streams(game_id, stream1, stream2),
+            )
+        } else if stream2.status == StreamStatus::Active {
+            pause_stream(stream2.id.into()).then(
+                Self::ext(env::current_account_id()).parse_two_streams(game_id, stream1, stream2),
+            )
+        } else {
+            Self::ext(env::current_account_id()).parse_two_streams(game_id, stream1, stream2)
+        }
+    }
+
+    pub fn parse_two_streams(&mut self, game_id: GameIndex, stream1: Stream, stream2: Stream) {
+        unimplemented!();
+    }
 }
 
 pub mod bid;
@@ -115,7 +172,7 @@ pub mod cell;
 pub mod external;
 pub mod game;
 pub mod game_with_data;
-pub mod stream;
+pub mod roketo;
 pub mod utils;
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -203,13 +260,13 @@ mod contract_tests {
         assert_eq!(test_game, contract.games.get(&id).unwrap());
 
         let game = contract.make_move(id, MoveType::PLACE, Some(Cell::new(4, 0)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 0)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 0)), None);
         assert_eq!(test_game.game, game);
         assert_eq!(test_game, contract.games.get(&id).unwrap());
 
         testing_env!(get_context(accounts(1)));
         let game = contract.make_move(id, MoveType::SWAP, Some(Cell::new(4, 0)));
-        test_game.make_move(MoveType::SWAP, Some(Cell::new(4, 0)));
+        test_game.make_move(MoveType::SWAP, Some(Cell::new(4, 0)), None);
         assert_eq!(test_game.game, game);
         assert_eq!(test_game, contract.games.get(&id).unwrap());
     }
