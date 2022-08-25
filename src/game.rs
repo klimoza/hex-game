@@ -7,6 +7,13 @@ use crate::cell::Cell;
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
+pub enum Player {
+    First,
+    Second,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+#[serde(crate = "near_sdk::serde")]
 pub struct Game {
     pub first_player: AccountId,
     pub second_player: AccountId,
@@ -16,12 +23,19 @@ pub struct Game {
     pub prev_block_height: BlockHeight,
     pub is_started: bool,
     pub is_finished: bool,
+    pub playtime: Option<u128>,
+    pub winner: Option<Player>,
 }
 
 pub type GameIndex = u64;
 
 impl Game {
-    pub fn new(first_player: AccountId, second_player: AccountId, field_size: usize) -> Self {
+    pub fn new(
+        first_player: AccountId,
+        second_player: AccountId,
+        field_size: usize,
+        playtime: Option<u128>,
+    ) -> Self {
         Self {
             first_player,
             second_player,
@@ -31,6 +45,8 @@ impl Game {
             prev_block_height: 0,
             is_started: false,
             is_finished: false,
+            playtime,
+            winner: None,
         }
     }
 
@@ -102,14 +118,14 @@ mod game_tests {
     #[test]
     #[should_panic]
     fn test_place_counter_wrong_player_1() {
-        let mut game = Game::new(accounts(0), accounts(1), 11);
+        let mut game = Game::new(accounts(0), accounts(1), 11, None);
         game.place_counter(&Cell::new(1, 1), 2);
     }
 
     #[test]
     #[should_panic]
     fn test_place_counter_wrong_player_2() {
-        let mut game = Game::new(accounts(0), accounts(1), 11);
+        let mut game = Game::new(accounts(0), accounts(1), 11, None);
         game.place_counter(&Cell::new(1, 1), 1);
         game.place_counter(&Cell::new(2, 1), 1);
     }
@@ -117,7 +133,7 @@ mod game_tests {
     #[test]
     #[should_panic]
     fn test_place_counter_cell_is_already_filled() {
-        let mut game = Game::new(accounts(0), accounts(1), 11);
+        let mut game = Game::new(accounts(0), accounts(1), 11, None);
         game.place_counter(&Cell::new(1, 1), 1);
         game.place_counter(&Cell::new(1, 1), 2);
     }
@@ -126,7 +142,7 @@ mod game_tests {
     fn test_place_counter() {
         testing_env!(get_context().block_index(0).build());
 
-        let mut game = Game::new(accounts(0), accounts(1), 11);
+        let mut game = Game::new(accounts(0), accounts(1), 11, None);
         game.place_counter(&Cell::new(1, 1), 1);
         game.place_counter(&Cell::new(1, 2), 2);
         game.place_counter(&Cell::new(10, 7), 1);
@@ -159,14 +175,14 @@ mod game_tests {
     #[test]
     #[should_panic]
     fn test_swap_rule_too_early() {
-        let mut game = Game::new(accounts(0), accounts(1), 11);
+        let mut game = Game::new(accounts(0), accounts(1), 11, None);
         game.swap_rule();
     }
 
     #[test]
     #[should_panic]
     fn test_swap_rule_too_late() {
-        let mut game = Game::new(accounts(0), accounts(1), 11);
+        let mut game = Game::new(accounts(0), accounts(1), 11, None);
         game.place_counter(&Cell::new(2, 5), 1);
         game.place_counter(&Cell::new(10, 7), 2);
         game.swap_rule();
@@ -174,7 +190,7 @@ mod game_tests {
 
     #[test]
     fn test_swap_rule() {
-        let mut game = Game::new(accounts(0), accounts(1), 11);
+        let mut game = Game::new(accounts(0), accounts(1), 11, None);
         game.place_counter(&Cell::new(10, 7), 1);
 
         let c = game.swap_rule();

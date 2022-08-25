@@ -7,7 +7,7 @@ use near_sdk::{
 use crate::{
     external::AccountView,
     roketo::{get_two_streams, roketo_create_stream, roketo_get_account, stop_stream},
-    utils::GAME_PLAYTIME,
+    utils::FEE,
     *,
 };
 
@@ -39,14 +39,6 @@ impl Bid {
 
 #[near_bindgen]
 impl Contract {
-    pub(crate) fn player_won(&self, bid: &Bid, game: &Game, player: u8) -> Promise {
-        if player == 1 {
-            Promise::new(game.first_player.clone()).transfer(bid.bid)
-        } else {
-            Promise::new(game.second_player.clone()).transfer(bid.bid)
-        }
-    }
-
     #[payable]
     pub fn make_bid(&mut self, game_id: GameIndex) -> Promise {
         let opt_bid = self.bids.get(&game_id);
@@ -59,68 +51,62 @@ impl Contract {
         let bid = opt_bid.unwrap();
         let account_id = env::predecessor_account_id();
 
+        require!(env::attached_deposit() >= 2 * bid.bid + FEE);
+
         if account_id == game.first_player && !bid.did_first_player_bet {
-            roketo_create_stream(bid.bid, GAME_PLAYTIME, game.first_player)
+            roketo_create_stream(bid.bid, game.playtime.unwrap(), game.first_player)
                 .then(roketo_get_account(account_id))
-                .then(Self::ext(env::current_account_id()).bid_resolve_first_player(bid, game_id))
+                .then(Self::ext(env::current_account_id()).resolve_player_bid(bid, game_id, 1))
         } else if account_id == game.second_player && !bid.did_second_player_bet {
-            roketo_create_stream(bid.bid, GAME_PLAYTIME, game.second_player)
+            roketo_create_stream(bid.bid, game.playtime.unwrap(), game.second_player)
                 .then(roketo_get_account(account_id))
-                .then(
-                    Self::ext(env::predecessor_account_id())
-                        .bid_resolve_second_player(bid, game_id),
-                )
+                .then(Self::ext(env::current_account_id()).resolve_player_bid(bid, game_id, 2))
         } else {
-            require!(false, "Incorrect bet");
+            require!(false, "Invalid bet");
             unreachable!();
         }
-        // TODO: сделать проверку на количество денег
     }
 
-    pub fn bid_resolve_first_player(&mut self, bid: Bid, game_id: GameIndex) {
-        require!(env::predecessor_account_id() == env::current_account_id());
-        require!(env::promise_results_count() == 1, "ERR_TOO_MANY_RESULTS");
-        let stream_id = match env::promise_result(0) {
-            PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(val) => {
-                if let Ok(stream_id) = near_sdk::serde_json::from_slice::<Base58CryptoHash>(&val) {
-                    stream_id
-                } else {
-                    env::panic_str("ERR_WRONG_VAL_RECEIVED")
-                }
-            }
-            PromiseResult::Failed => env::panic_str("ERR_CALL_FAILED"),
-        };
-        let new_bid = Bid {
-            did_first_player_bet: true,
-            stream_to_first_player: stream_id,
-            ..bid
-        };
-        self.bids.insert(&game_id, &new_bid);
-    }
-
-    pub fn bid_resolve_second_player(&mut self, bid: Bid, game_id: GameIndex) {
+    #[private]
+    pub fn resolve_player_bid(&mut self, bid: Bid, game_id: GameIndex, player: u8) {
         require!(env::predecessor_account_id() == env::current_account_id());
         require!(env::promise_results_count() == 1, "ERR_TOO_MANY_RESULTS");
         let stream_id = match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(val) => {
                 if let Ok(account) = near_sdk::serde_json::from_slice::<AccountView>(&val) {
-                    account.last_created_stream
+                    account.last_created_stream.unwrap()
                 } else {
                     env::panic_str("ERR_WRONG_VAL_RECEIVED")
                 }
             }
             PromiseResult::Failed => env::panic_str("ERR_CALL_FAILED"),
         };
-        let new_bid = Bid {
-            did_second_player_bet: true,
-            stream_to_second_player: stream_id.unwrap(),
-            ..bid
+        let new_bid = if player == 1 {
+            Bid {
+                did_first_player_bet: true,
+                stream_to_first_player: stream_id,
+                ..bid
+            }
+        } else {
+            Bid {
+                did_second_player_bet: true,
+                stream_to_second_player: stream_id,
+                ..bid
+            }
         };
         self.bids.insert(&game_id, &new_bid);
     }
 
+    pub(crate) fn player_won(&self, bid: &Bid, game: &Game, player: u8) -> Promise {
+        if player == 1 {
+            Promise::new(game.first_player.clone()).transfer(bid.bid)
+        } else {
+            Promise::new(game.second_player.clone()).transfer(bid.bid)
+        }
+    }
+
+    #[private]
     pub(crate) fn check_stream_bids(&mut self, game_id: GameIndex) -> Option<Promise> {
         require!(env::predecessor_account_id() == env::current_account_id());
         let bid = self.bids.get(&game_id);

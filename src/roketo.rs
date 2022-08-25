@@ -16,7 +16,7 @@ pub(crate) fn roketo_create_stream(
     receiver_id: AccountId,
 ) -> Promise {
     let tokens_per_sec = (bid + game_playtime - 1) / game_playtime;
-    let msg = format!("{{\"Create\":{{\"request\":{{\"owner_id\":\"{}\",\"receiver_id\":\"{}\",\"tokens_per_sec\":\"{}\", \"cliff_period_sec\":\"{}\"}}}}}}", env::current_account_id(), receiver_id.to_string(), tokens_per_sec, game_playtime);
+    let msg = format!("{{\"Create\":{{\"request\":{{\"owner_id\":\"{}\",\"receiver_id\":\"{}\",\"tokens_per_sec\":\"{}\"}}}}}}", env::current_account_id(), receiver_id.to_string(), tokens_per_sec);
     ext_ft_core::ext(WRAP_ACC.parse().unwrap()).ft_transfer_call(
         ROKETO_ACC.parse().unwrap(),
         U128::from(bid),

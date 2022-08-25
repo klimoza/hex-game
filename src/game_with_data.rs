@@ -14,9 +14,14 @@ pub struct GameWithData {
 }
 
 impl GameWithData {
-    pub fn new(first_player: AccountId, second_player: AccountId, field_size: usize) -> Self {
+    pub fn new(
+        first_player: AccountId,
+        second_player: AccountId,
+        field_size: usize,
+        playtime: Option<u128>,
+    ) -> Self {
         Self {
-            game: Game::new(first_player, second_player, field_size),
+            game: Game::new(first_player, second_player, field_size, playtime),
             data: Board::new(field_size),
         }
     }
@@ -136,7 +141,7 @@ mod game_with_board_tests {
 
     #[test]
     fn test_bfs() {
-        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
+        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5, None);
         test_game.game.board.set_cell(&Cell::new(0, 0), 1);
         test_game.game.board.set_cell(&Cell::new(0, 1), 1);
         test_game.game.board.set_cell(&Cell::new(0, 2), 1);
@@ -173,7 +178,7 @@ mod game_with_board_tests {
 
     #[test]
     fn test_process_cell() {
-        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
+        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5, None);
         test_game.game.board.set_cell(&Cell::new(0, 0), 1);
         test_game.game.board.set_cell(&Cell::new(0, 1), 1);
         test_game.game.board.set_cell(&Cell::new(0, 2), 1);
@@ -207,7 +212,7 @@ mod game_with_board_tests {
 
     #[test]
     fn test_make_move() {
-        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
+        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5, None);
         let mut test_data = Board::new(5);
         assert_eq!(test_game.data, test_data);
 
@@ -250,14 +255,14 @@ mod game_with_board_tests {
     #[test]
     #[should_panic]
     fn test_make_move_incorrect_args() {
-        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
+        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5, None);
         test_game.make_move(MoveType::PLACE, None);
     }
 
     #[test]
     #[should_panic]
     fn test_make_move_wrong_player() {
-        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
+        let mut test_game = GameWithData::new(accounts(0), accounts(1), 5, None);
         testing_env!(get_context(accounts(1)));
         test_game.make_move(MoveType::PLACE, Some(Cell::new(0, 0)));
     }
