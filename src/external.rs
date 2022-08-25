@@ -52,7 +52,7 @@ pub mod b58_dec_format {
     }
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum StreamFinishReason {
     StoppedByOwner,
@@ -62,7 +62,7 @@ pub enum StreamFinishReason {
     FinishedWhileTransferred,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq, Debug, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum StreamStatus {
     Initialized,
@@ -167,4 +167,6 @@ pub trait Roketo {
     fn get_account(self, account_id: AccountId, only_if_exist: Option<bool>) -> AccountView;
     fn get_stream(self, stream_id: Base58CryptoHash) -> Stream;
     fn pause_stream(&mut self, stream_id: Base58CryptoHash) -> Vec<Promise>;
+    fn start_stream(&mut self, stream_id: Base58CryptoHash);
+    fn stop_stream(&mut self, stream_id: Base58CryptoHash) -> Vec<Promise>;
 }

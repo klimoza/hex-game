@@ -6,7 +6,7 @@ use near_sdk::{
 
 use crate::{
     external::AccountView,
-    roketo::{get_two_streams, roketo_create_stream, roketo_get_account},
+    roketo::{get_two_streams, roketo_create_stream, roketo_get_account, stop_stream},
     utils::GAME_PLAYTIME,
     *,
 };
@@ -17,8 +17,8 @@ pub struct Bid {
     pub bid: u128,
     pub did_first_player_bet: bool,
     pub did_second_player_bet: bool,
-    pub stream_from_first_player: Base58CryptoHash,
-    pub stream_from_second_player: Base58CryptoHash,
+    pub stream_to_first_player: Base58CryptoHash,
+    pub stream_to_second_player: Base58CryptoHash,
 }
 
 impl Bid {
@@ -27,9 +27,13 @@ impl Bid {
             bid,
             did_first_player_bet: false,
             did_second_player_bet: false,
-            stream_from_first_player: Base58CryptoHash::default(),
-            stream_from_second_player: Base58CryptoHash::default(),
+            stream_to_first_player: Base58CryptoHash::default(),
+            stream_to_second_player: Base58CryptoHash::default(),
         }
+    }
+
+    pub fn stop_streams(&self) -> Promise {
+        stop_stream(self.stream_to_first_player).then(stop_stream(self.stream_to_second_player))
     }
 }
 
@@ -89,7 +93,7 @@ impl Contract {
         };
         let new_bid = Bid {
             did_first_player_bet: true,
-            stream_from_first_player: stream_id,
+            stream_to_first_player: stream_id,
             ..bid
         };
         self.bids.insert(&game_id, &new_bid);
@@ -111,7 +115,7 @@ impl Contract {
         };
         let new_bid = Bid {
             did_second_player_bet: true,
-            stream_from_second_player: stream_id.unwrap(),
+            stream_to_second_player: stream_id.unwrap(),
             ..bid
         };
         self.bids.insert(&game_id, &new_bid);
@@ -126,10 +130,10 @@ impl Contract {
             let unwrap_bid = bid.unwrap();
             Some(
                 get_two_streams(
-                    unwrap_bid.stream_from_first_player,
-                    unwrap_bid.stream_from_second_player,
+                    unwrap_bid.stream_to_first_player,
+                    unwrap_bid.stream_to_second_player,
                 )
-                .then(Self::ext(env::current_account_id()).parse_two_promise_streams(game_id)),
+                .then(Self::ext(env::current_account_id()).parse_two_promise_streams()),
             )
         }
     }

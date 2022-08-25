@@ -6,13 +6,13 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
-    env, near_bindgen, require, AccountId, BorshStorageKey, PanicOnDefault, Promise,
-    PromiseOrValue, PromiseResult,
+    env, near_bindgen, require, AccountId, BorshStorageKey, PanicOnDefault, Promise, PromiseResult,
 };
+use roketo::start_stream;
 use utils::BID;
 
-use crate::external::{Stream, StreamStatus};
-use crate::roketo::pause_stream;
+use crate::external::{Stream, StreamFinishReason, StreamStatus};
+use crate::roketo::{pause_stream, stop_stream};
 
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
@@ -104,11 +104,53 @@ impl Contract {
         );
         // TODO: проверить что все ставки уже сделаны
         if let Some(promise) = self.check_stream_bids(index) {
-            promise.then(
-                Self::ext(env::current_account_id()).make_move_internal(index, move_type, cell),
-            )
+            promise
+                .then(Self::ext(env::current_account_id()).resolve_streams(index, move_type, cell))
         } else {
             Self::ext(env::current_account_id()).make_move_internal(index, move_type, cell)
+        }
+    }
+
+    pub fn resolve_streams(
+        &mut self,
+        game_id: GameIndex,
+        move_type: MoveType,
+        cell: Option<Cell>,
+    ) -> Promise {
+        require!(env::predecessor_account_id() == env::current_account_id());
+        require!(env::promise_results_count() == 1, "ERR_TOO_MANY_RESULTS");
+        let (res, stream1, stream2) = match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(val) => {
+                if let Ok(res) = near_sdk::serde_json::from_slice::<(u8, Stream, Stream)>(&val) {
+                    res
+                } else {
+                    env::panic_str("ERR_WRONG_VAL_RECEIVED")
+                }
+            }
+            PromiseResult::Failed => env::panic_str("ERR_CALL_FAILED"),
+        };
+        let bid = self.bids.get(&game_id).unwrap();
+        let mut game_with_data = self.games.get(&game_id).unwrap();
+        game_with_data.game.is_finished = true;
+        self.games.insert(&game_id, &game_with_data);
+        let game = game_with_data.game;
+        match res {
+            0 => Self::ext(env::current_account_id()).make_move_internal(game_id, move_type, cell),
+            1 => {
+                let bal = stream2.balance;
+                stop_stream(stream2.id.into())
+                    .then(Promise::new(game.first_player.clone()).transfer(bal + bid.bid))
+            }
+            2 => {
+                let bal = stream1.balance;
+                stop_stream(stream1.id.into())
+                    .then(Promise::new(game.second_player.clone()).transfer(bal + bid.bid))
+            }
+            3 => Promise::new(game.first_player.clone())
+                .transfer(bid.bid)
+                .then(Promise::new(game.second_player.clone()).transfer(bid.bid)),
+            _ => unreachable!(),
         }
     }
 
@@ -117,14 +159,14 @@ impl Contract {
         index: GameIndex,
         move_type: MoveType,
         cell: Option<Cell>,
-    ) -> PromiseOrValue<Game> {
+    ) -> Promise {
         let mut game_with_data = self.games.get(&index).expect("Game doesn't exist.");
         if game_with_data.game.is_finished {
-            return PromiseOrValue::Value(game_with_data.game);
+            return Self::ext(env::current_account_id()).get_game_internal(index);
         }
         let old_board = game_with_data.game.board.clone();
 
-        game_with_data.make_move(move_type, cell, self.bids.get(&index));
+        game_with_data.make_move(move_type, cell);
 
         env::log_str("Old board:");
         old_board.debug_logs();
@@ -132,32 +174,41 @@ impl Contract {
         env::log_str("New board:");
         game_with_data.game.board.debug_logs();
 
+        self.games.insert(&index, &game_with_data);
+
         if game_with_data.game.is_finished {
             if game_with_data.game.turn % 2 == 1 {
                 env::log_str("First player wins!");
             } else {
                 env::log_str("Second player wins!");
             }
-            self.games.insert(&index, &game_with_data);
-            if self.bids.contains_key(&index) {
-                return PromiseOrValue::Promise(
-                    self.player_won(
-                        &self.bids.get(&index).unwrap(),
+            if let Some(bid) = self.bids.get(&index) {
+                bid.stop_streams()
+                    .then(self.player_won(
+                        &bid,
                         &game_with_data.game,
                         game_with_data.game.turn as u8 % 2,
-                    )
-                    .then(Self::ext(env::current_account_id()).get_game_internal(index)),
-                );
+                    ))
+                    .then(Self::ext(env::current_account_id()).get_game_internal(index))
             } else {
-                return PromiseOrValue::Value(game_with_data.game);
+                Self::ext(env::current_account_id()).get_game_internal(index)
             }
         } else {
-            self.games.insert(&index, &game_with_data);
-            return PromiseOrValue::Value(game_with_data.game);
+            if let Some(bid) = self.bids.get(&index) {
+                if game_with_data.game.turn % 2 == 1 {
+                    start_stream(bid.stream_to_second_player)
+                        .then(Self::ext(env::current_account_id()).get_game_internal(index))
+                } else {
+                    start_stream(bid.stream_to_first_player)
+                        .then(Self::ext(env::current_account_id()).get_game_internal(index))
+                }
+            } else {
+                Self::ext(env::current_account_id()).get_game_internal(index)
+            }
         }
     }
 
-    pub fn parse_two_promise_streams(&mut self, game_id: GameIndex) -> Promise {
+    pub fn parse_two_promise_streams(&mut self) -> Promise {
         require!(env::predecessor_account_id() == env::current_account_id());
         require!(env::promise_results_count() == 2, "ERR_TOO_MANY_RESULTS");
         let stream1 = match env::promise_result(0) {
@@ -185,30 +236,92 @@ impl Contract {
         if stream1.status == StreamStatus::Active && stream2.status == StreamStatus::Active {
             pause_stream(stream1.id.into())
                 .and(pause_stream(stream2.id.into()))
-                .then(
-                    Self::ext(env::current_account_id())
-                        .parse_two_streams(game_id, stream1, stream2),
-                )
+                .then(Self::ext(env::current_account_id()).parse_two_streams(stream1, stream2))
         } else if stream1.status == StreamStatus::Active {
-            pause_stream(stream1.id.into()).then(
-                Self::ext(env::current_account_id()).parse_two_streams(game_id, stream1, stream2),
-            )
+            pause_stream(stream1.id.into())
+                .then(Self::ext(env::current_account_id()).parse_two_streams(stream1, stream2))
         } else if stream2.status == StreamStatus::Active {
-            pause_stream(stream2.id.into()).then(
-                Self::ext(env::current_account_id()).parse_two_streams(game_id, stream1, stream2),
-            )
+            pause_stream(stream2.id.into())
+                .then(Self::ext(env::current_account_id()).parse_two_streams(stream1, stream2))
         } else {
-            Self::ext(env::current_account_id()).parse_two_streams(game_id, stream1, stream2)
+            Self::ext(env::current_account_id()).parse_two_streams(stream1, stream2)
         }
     }
 
-    pub fn parse_two_streams(&mut self, game_id: GameIndex, stream1: Stream, stream2: Stream) {
-        //TODO: доделать
+    pub fn parse_two_streams(&mut self, stream1: Stream, stream2: Stream) -> (u8, Stream, Stream) {
         require!(env::predecessor_account_id() == env::current_account_id());
-        match (stream1.status, stream2.status) {
+        match (stream1.status.clone(), stream2.status.clone()) {
             (StreamStatus::Active, _) => unreachable!(),
             (_, StreamStatus::Active) => unreachable!(),
-            _ => unreachable!(),
+            (
+                _,
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::StoppedByOwner,
+                },
+            ) => unreachable!(),
+            (
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::StoppedByOwner,
+                },
+                _,
+            ) => unreachable!(),
+            (
+                _,
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedWhileTransferred,
+                },
+            ) => unreachable!(),
+            (
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedWhileTransferred,
+                },
+                _,
+            ) => unreachable!(),
+            (
+                _,
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedBecauseCannotBeExtended,
+                },
+            ) => unreachable!(),
+            (
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedBecauseCannotBeExtended,
+                },
+                _,
+            ) => unreachable!(),
+            (
+                _,
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::StoppedByReceiver,
+                },
+            ) => (0, stream1, stream2),
+            (
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::StoppedByReceiver,
+                },
+                _,
+            ) => (0, stream1, stream2),
+            (
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedNaturally,
+                },
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedNaturally,
+                },
+            ) => (3, stream1, stream2),
+            (
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedNaturally,
+                },
+                _,
+            ) => (1, stream1, stream2),
+            (
+                _,
+                StreamStatus::Finished {
+                    reason: StreamFinishReason::FinishedNaturally,
+                },
+            ) => (2, stream1, stream2),
+            _ => (0, stream1, stream2),
         }
     }
 }
@@ -306,14 +419,14 @@ mod contract_tests {
         let mut test_game = GameWithData::new(accounts(0), accounts(1), 5);
         assert_eq!(test_game, contract.games.get(&id).unwrap());
 
-        let game = contract.make_move(id, MoveType::PLACE, Some(Cell::new(4, 0)));
-        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 0)), None);
+        // let game = contract.make_move(id, MoveType::PLACE, Some(Cell::new(4, 0)));
+        test_game.make_move(MoveType::PLACE, Some(Cell::new(4, 0)));
         // assert_eq!(test_game.game, game);
         assert_eq!(test_game, contract.games.get(&id).unwrap());
 
         testing_env!(get_context(accounts(1)));
-        let game = contract.make_move(id, MoveType::SWAP, Some(Cell::new(4, 0)));
-        test_game.make_move(MoveType::SWAP, Some(Cell::new(4, 0)), None);
+        // let game = contract.make_move(id, MoveType::SWAP, Some(Cell::new(4, 0)));
+        test_game.make_move(MoveType::SWAP, Some(Cell::new(4, 0)));
         // assert_eq!(test_game.game, game);
         assert_eq!(test_game, contract.games.get(&id).unwrap());
     }

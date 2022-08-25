@@ -45,3 +45,15 @@ pub(crate) fn pause_stream(stream_id: Base58CryptoHash) -> Promise {
         .with_attached_deposit(1)
         .pause_stream(stream_id)
 }
+
+pub(crate) fn stop_stream(stream_id: Base58CryptoHash) -> Promise {
+    ext_roketo::ext(ROKETO_ACC.parse().unwrap())
+        .with_attached_deposit(1)
+        .stop_stream(stream_id)
+}
+
+pub(crate) fn start_stream(stream_id: Base58CryptoHash) -> Promise {
+    ext_roketo::ext(ROKETO_ACC.parse().unwrap())
+        .with_attached_deposit(1)
+        .start_stream(stream_id)
+}
