@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{game::Player, *};
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -40,26 +40,25 @@ impl Contract {
         env::log_str("New board:");
         game_with_data.game.board.debug_logs();
 
-        self.games.insert(&index, &game_with_data);
-
         if game_with_data.game.is_finished {
             if game_with_data.game.turn % 2 == 1 {
+                game_with_data.game.winner = Some(Player::First);
                 env::log_str("First player wins!");
             } else {
+                game_with_data.game.winner = Some(Player::Second);
                 env::log_str("Second player wins!");
             }
+            self.games.insert(&index, &game_with_data);
+            let winner = game_with_data.game.winner.clone();
             if let Some(bid) = self.bids.get(&index) {
                 bid.stop_streams()
-                    .then(self.player_won(
-                        &bid,
-                        &game_with_data.game,
-                        game_with_data.game.turn as u8 % 2,
-                    ))
+                    .then(self.player_won(&bid, &game_with_data.game, winner.unwrap()))
                     .then(Self::ext(env::current_account_id()).get_game_internal(index))
             } else {
                 Self::ext(env::current_account_id()).get_game_internal(index)
             }
         } else {
+            self.games.insert(&index, &game_with_data);
             if let Some(bid) = self.bids.get(&index) {
                 if game_with_data.game.turn % 2 == 1 {
                     start_stream(bid.stream_to_second_player)
@@ -100,8 +99,6 @@ impl Contract {
         let bid = self.bids.get(&game_id).unwrap();
         let mut game_with_data = self.games.get(&game_id).unwrap();
         game_with_data.game.is_finished = true;
-        self.games.insert(&game_id, &game_with_data);
-        let game = game_with_data.game;
 
         match res {
             FinishedStreams::None => {
@@ -109,17 +106,27 @@ impl Contract {
             }
             FinishedStreams::First => {
                 let bal = stream2.balance;
+                game_with_data.game.winner = Some(Player::First);
+                self.games.insert(&game_id, &game_with_data);
+                let game = game_with_data.game;
                 stop_stream(stream2.id.into())
                     .then(Promise::new(game.first_player.clone()).transfer(bal + bid.bid))
             }
             FinishedStreams::Second => {
                 let bal = stream1.balance;
+                game_with_data.game.winner = Some(Player::First);
+                self.games.insert(&game_id, &game_with_data);
+                let game = game_with_data.game;
                 stop_stream(stream1.id.into())
                     .then(Promise::new(game.second_player.clone()).transfer(bal + bid.bid))
             }
-            FinishedStreams::Both => Promise::new(game.first_player.clone())
-                .transfer(bid.bid)
-                .then(Promise::new(game.second_player.clone()).transfer(bid.bid)),
+            FinishedStreams::Both => {
+                self.games.insert(&game_id, &game_with_data);
+                let game = game_with_data.game;
+                Promise::new(game.first_player.clone())
+                    .transfer(bid.bid)
+                    .then(Promise::new(game.second_player.clone()).transfer(bid.bid))
+            }
         }
     }
 

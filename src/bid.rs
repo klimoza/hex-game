@@ -6,6 +6,7 @@ use near_sdk::{
 
 use crate::{
     external::AccountView,
+    game::Player,
     roketo::{get_two_streams, roketo_create_stream, roketo_get_account, stop_stream},
     utils::FEE,
     *,
@@ -56,11 +57,19 @@ impl Contract {
         if account_id == game.first_player && !bid.did_first_player_bet {
             roketo_create_stream(bid.bid, game.playtime.unwrap(), game.first_player)
                 .then(roketo_get_account(account_id))
-                .then(Self::ext(env::current_account_id()).resolve_player_bid(bid, game_id, 1))
+                .then(Self::ext(env::current_account_id()).resolve_player_bid(
+                    bid,
+                    game_id,
+                    Player::First,
+                ))
         } else if account_id == game.second_player && !bid.did_second_player_bet {
             roketo_create_stream(bid.bid, game.playtime.unwrap(), game.second_player)
                 .then(roketo_get_account(account_id))
-                .then(Self::ext(env::current_account_id()).resolve_player_bid(bid, game_id, 2))
+                .then(Self::ext(env::current_account_id()).resolve_player_bid(
+                    bid,
+                    game_id,
+                    Player::Second,
+                ))
         } else {
             require!(false, "Invalid bet");
             unreachable!();
@@ -68,7 +77,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn resolve_player_bid(&mut self, bid: Bid, game_id: GameIndex, player: u8) {
+    pub fn resolve_player_bid(&mut self, bid: Bid, game_id: GameIndex, player: Player) {
         require!(env::predecessor_account_id() == env::current_account_id());
         require!(env::promise_results_count() == 1, "ERR_TOO_MANY_RESULTS");
         let stream_id = match env::promise_result(0) {
@@ -82,27 +91,25 @@ impl Contract {
             }
             PromiseResult::Failed => env::panic_str("ERR_CALL_FAILED"),
         };
-        let new_bid = if player == 1 {
-            Bid {
+        let new_bid = match player {
+            Player::First => Bid {
                 did_first_player_bet: true,
                 stream_to_first_player: stream_id,
                 ..bid
-            }
-        } else {
-            Bid {
+            },
+            Player::Second => Bid {
                 did_second_player_bet: true,
                 stream_to_second_player: stream_id,
                 ..bid
-            }
+            },
         };
         self.bids.insert(&game_id, &new_bid);
     }
 
-    pub(crate) fn player_won(&self, bid: &Bid, game: &Game, player: u8) -> Promise {
-        if player == 1 {
-            Promise::new(game.first_player.clone()).transfer(bid.bid)
-        } else {
-            Promise::new(game.second_player.clone()).transfer(bid.bid)
+    pub(crate) fn player_won(&self, bid: &Bid, game: &Game, player: Player) -> Promise {
+        match player {
+            Player::First => Promise::new(game.first_player.clone()).transfer(bid.bid),
+            Player::Second => Promise::new(game.second_player.clone()).transfer(bid.bid),
         }
     }
 
