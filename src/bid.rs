@@ -8,7 +8,7 @@ use crate::{
     external::AccountView,
     game::Player,
     roketo::{get_two_streams, roketo_create_stream, roketo_get_account, stop_stream},
-    utils::FEE,
+    utils::{FEE, MIN_MAKE_BID_GAS},
     *,
 };
 
@@ -47,6 +47,10 @@ impl Contract {
             opt_bid.is_some(),
             "There's no betting game with such index."
         );
+        require!(
+            env::prepaid_gas() >= MIN_MAKE_BID_GAS,
+            "You should attach more gas"
+        );
 
         let game = self.games.get(&game_id).unwrap().game;
         let bid = opt_bid.unwrap();
@@ -55,16 +59,16 @@ impl Contract {
         require!(env::attached_deposit() >= 2 * bid.bid + FEE);
 
         if account_id == game.first_player && !bid.did_first_player_bet {
-            roketo_create_stream(bid.bid, game.playtime.unwrap(), game.first_player)
-                .then(roketo_get_account(account_id))
+            roketo_create_stream(bid.bid, game.playtime.unwrap(), account_id)
+                .then(roketo_get_account(env::current_account_id()))
                 .then(Self::ext(env::current_account_id()).resolve_player_bid(
                     bid,
                     game_id,
                     Player::First,
                 ))
         } else if account_id == game.second_player && !bid.did_second_player_bet {
-            roketo_create_stream(bid.bid, game.playtime.unwrap(), game.second_player)
-                .then(roketo_get_account(account_id))
+            roketo_create_stream(bid.bid, game.playtime.unwrap(), account_id)
+                .then(roketo_get_account(env::current_account_id()))
                 .then(Self::ext(env::current_account_id()).resolve_player_bid(
                     bid,
                     game_id,
@@ -113,9 +117,7 @@ impl Contract {
         }
     }
 
-    #[private]
     pub(crate) fn check_stream_bids(&mut self, game_id: GameIndex) -> Option<Promise> {
-        require!(env::predecessor_account_id() == env::current_account_id());
         let bid = self.bids.get(&game_id);
         if bid.is_none() {
             None

@@ -5,6 +5,7 @@ use game_with_data::GameWithData;
 use near_contract_standards::non_fungible_token::refund_deposit;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
+use near_sdk::json_types::U128;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{
     env, near_bindgen, require, AccountId, BorshStorageKey, PanicOnDefault, Promise, PromiseResult,
@@ -14,7 +15,7 @@ use utils::{DEFAULT_PLAYTIME, MIN_BID};
 
 use crate::external::{Stream, StreamFinishReason, StreamStatus};
 use crate::roketo::{pause_stream, stop_stream};
-use crate::utils::{MAX_BID, MAX_PLAYTIME, MIN_PLAYTIME};
+use crate::utils::{MAX_BID, MAX_PLAYTIME, MIN_MAKE_MOVE_GAS, MIN_PLAYTIME};
 
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
@@ -55,8 +56,8 @@ impl Contract {
         first_player: AccountId,
         second_player: AccountId,
         field_size: Option<usize>,
-        bid: Option<u128>,
-        playtime: Option<u128>,
+        bid: Option<U128>,
+        playtime: Option<u32>,
     ) -> GameIndex {
         if playtime.is_some() {
             require!(
@@ -68,9 +69,10 @@ impl Contract {
                 "You can't make game with time control without betting."
             )
         }
-        if bid.is_some() {
+        let game_bid = bid.map(|x| u128::from(x));
+        if game_bid.is_some() {
             require!(
-                bid.unwrap() >= MIN_BID && bid.unwrap() <= MAX_BID,
+                game_bid.unwrap() >= MIN_BID && game_bid.unwrap() <= MAX_BID,
                 "Bid can't be too small or too big."
             );
         }
@@ -78,7 +80,7 @@ impl Contract {
 
         let index = self.next_game_id;
         let size = field_size.unwrap_or(11);
-        let game_playtime: Option<u128> = if bid.is_some() {
+        let game_playtime = if game_bid.is_some() {
             if playtime.is_some() {
                 playtime
             } else {
@@ -93,8 +95,8 @@ impl Contract {
             &GameWithData::new(first_player, second_player, size, game_playtime),
         );
 
-        if bid.is_some() {
-            self.bids.insert(&index, &Bid::new(bid.unwrap()));
+        if game_bid.is_some() {
+            self.bids.insert(&index, &Bid::new(game_bid.unwrap()));
         }
 
         let required_storage_in_bytes = env::storage_usage() - initial_storage_usage;
@@ -133,6 +135,10 @@ impl Contract {
                 "Players should deposit their bets before game start."
             );
         }
+        require!(
+            env::prepaid_gas() >= MIN_MAKE_MOVE_GAS,
+            "You should attach more gas."
+        );
 
         if let Some(promise) = self.check_stream_bids(index) {
             promise

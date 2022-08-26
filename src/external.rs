@@ -170,3 +170,8 @@ pub trait Roketo {
     fn start_stream(&mut self, stream_id: Base58CryptoHash);
     fn stop_stream(&mut self, stream_id: Base58CryptoHash) -> Vec<Promise>;
 }
+
+#[ext_contract(ext_wrap)]
+pub trait Wrap {
+    fn near_deposit(&mut self);
+}

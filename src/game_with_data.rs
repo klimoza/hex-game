@@ -18,7 +18,7 @@ impl GameWithData {
         first_player: AccountId,
         second_player: AccountId,
         field_size: usize,
-        playtime: Option<u128>,
+        playtime: Option<u32>,
     ) -> Self {
         Self {
             game: Game::new(first_player, second_player, field_size, playtime),

@@ -23,7 +23,7 @@ pub struct Game {
     pub prev_block_height: BlockHeight,
     pub is_started: bool,
     pub is_finished: bool,
-    pub playtime: Option<u128>,
+    pub playtime: Option<u32>,
     pub winner: Option<Player>,
 }
 
@@ -34,7 +34,7 @@ impl Game {
         first_player: AccountId,
         second_player: AccountId,
         field_size: usize,
-        playtime: Option<u128>,
+        playtime: Option<u32>,
     ) -> Self {
         Self {
             first_player,
