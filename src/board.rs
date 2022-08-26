@@ -40,11 +40,6 @@ impl Board {
     }
 
     pub fn set_cell(&mut self, cell: &Cell, value: u8) {
-        require!(
-            cell.x < self.size && cell.y < self.size,
-            "Cell is out of bounds."
-        );
-        require!(value <= 2, "Value is too big.");
         let (byte, byte_index, bit_index) = self.get_byte_and_bit(cell);
         let bits = (byte >> bit_index) & 3;
         let new_byte = byte ^ (bits << bit_index) ^ (value << bit_index);

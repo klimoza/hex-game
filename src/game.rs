@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, require, AccountId, BlockHeight};
+use near_sdk::{env, AccountId, BlockHeight};
 
 use crate::board::Board;
 use crate::cell::Cell;
@@ -51,11 +51,6 @@ impl Game {
     }
 
     pub fn place_counter(&mut self, cell: &Cell, player: u8) {
-        require!(self.board.get_cell(cell) == 0, "Cell is already filled.");
-        require!(
-            self.turn % 2 + 1 == player as usize,
-            "It's another player turn now."
-        );
         self.board.set_cell(cell, player);
         self.turn += 1;
         if env::block_height() != self.current_block_height {
@@ -65,11 +60,6 @@ impl Game {
     }
 
     pub fn swap_rule(&mut self) -> Cell {
-        require!(
-            self.turn == 1,
-            "Swap rule can be applied only on the second player first turn"
-        );
-
         let non_zero_byte = self
             .board
             .field

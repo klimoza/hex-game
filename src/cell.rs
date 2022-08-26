@@ -1,5 +1,3 @@
-use near_sdk::require;
-
 use crate::*;
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Debug, Clone)]
@@ -15,10 +13,6 @@ impl Cell {
     }
 
     pub fn get_neighbours(&self, field_size: usize) -> Vec<Cell> {
-        require!(
-            self.x < field_size && self.y < field_size,
-            "Cell is out of bounds"
-        );
         let mut neighbours: Vec<Cell> = Vec::new();
         let (x, y) = (self.x, self.y);
         if self.x > 0 {

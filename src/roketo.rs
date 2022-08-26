@@ -6,7 +6,7 @@ use near_sdk::{
 
 use crate::{
     external::{ext_roketo, ext_wrap},
-    utils::{ROKETO_ACC, WRAP_ACC},
+    utils::{ONE_TERA, ROKETO_ACC, WRAP_ACC},
     *,
 };
 
@@ -24,7 +24,7 @@ pub(crate) fn roketo_create_stream(
         .then(
             ext_ft_core::ext(WRAP_ACC.parse().unwrap())
                 .with_attached_deposit(1)
-                .with_static_gas(Gas::from(200_000_000_000_000))
+                .with_static_gas(Gas(50 * ONE_TERA))
                 .ft_transfer_call(
                     ROKETO_ACC.parse().unwrap(),
                     U128::from(bid + fee),
@@ -52,6 +52,7 @@ pub(crate) fn get_two_streams(
 pub(crate) fn pause_stream(stream_id: Base58CryptoHash) -> Promise {
     ext_roketo::ext(ROKETO_ACC.parse().unwrap())
         .with_attached_deposit(1)
+        .with_static_gas(Gas(50 * ONE_TERA))
         .pause_stream(stream_id)
 }
 

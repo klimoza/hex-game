@@ -15,7 +15,7 @@ use utils::{DEFAULT_PLAYTIME, MIN_BID};
 
 use crate::external::{Stream, StreamFinishReason, StreamStatus};
 use crate::roketo::{pause_stream, stop_stream};
-use crate::utils::{MAX_BID, MAX_PLAYTIME, MIN_MAKE_MOVE_GAS, MIN_PLAYTIME};
+use crate::utils::{MAX_BID, MAX_PLAYTIME, MIN_PLAYTIME};
 
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
@@ -24,7 +24,7 @@ pub enum StorageKey {
     Bid,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub enum MoveType {
     PLACE,
@@ -135,10 +135,39 @@ impl Contract {
                 "Players should deposit their bets before game start."
             );
         }
-        require!(
-            env::prepaid_gas() >= MIN_MAKE_MOVE_GAS,
-            "You should attach more gas."
-        );
+        let game = game_with_data.game;
+        match (move_type.clone(), cell.clone()) {
+            (MoveType::PLACE, Some(cell)) => {
+                if game.turn % 2 == 0 {
+                    require!(
+                        env::predecessor_account_id() == game.first_player,
+                        "It's not your turn"
+                    );
+                } else {
+                    require!(
+                        env::predecessor_account_id() == game.second_player,
+                        "It's not your turn"
+                    );
+                }
+                require!(game.board.get_cell(&cell) == 0, "Cell is already filled.");
+            }
+            (MoveType::SWAP, _) => {
+                require!(
+                    env::predecessor_account_id() == game.second_player,
+                    "Incorrect predecessor account"
+                );
+                require!(
+                    game.turn == 1,
+                    "You can apply swap rule only on the second turn"
+                );
+            }
+            _ => env::panic_str("Incorrect move args"),
+        };
+
+        // require!(
+        //     env::prepaid_gas() >= MIN_MAKE_MOVE_GAS,
+        //     "You should attach more gas."
+        // );
 
         if let Some(promise) = self.check_stream_bids(index) {
             promise

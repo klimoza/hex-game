@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::{env, require, AccountId};
+use near_sdk::AccountId;
 use std::collections::VecDeque;
 
 use crate::board::Board;
@@ -30,30 +30,18 @@ impl GameWithData {
         match (move_type, cell) {
             (MoveType::PLACE, Some(cell)) => {
                 if self.game.turn % 2 == 0 {
-                    require!(
-                        env::predecessor_account_id() == self.game.first_player,
-                        "Incorrect predecessor account"
-                    );
                     self.game.place_counter(&cell, 1);
                 } else {
-                    require!(
-                        env::predecessor_account_id() == self.game.second_player,
-                        "Incorrect predecessor account"
-                    );
                     self.game.place_counter(&cell, 2);
                 }
                 self.process_cell(cell);
             }
             (MoveType::SWAP, _) => {
-                require!(
-                    env::predecessor_account_id() == self.game.second_player,
-                    "Incorrect predecessor account"
-                );
                 let cell = self.game.swap_rule();
                 self.data.set_cell(&cell, 0);
                 self.process_cell(cell.symm());
             }
-            _ => env::panic_str("Incorrect move args"),
+            _ => unreachable!(),
         };
     }
 
